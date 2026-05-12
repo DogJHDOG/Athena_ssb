@@ -8,15 +8,14 @@ from pathlib import Path
 from tree_sitter import Language
 
 
-gg.set_language("java")
-
-
 class SoftwareRepo:
-    def __init__(self, repo_dir, commit, n=None):
+    def __init__(self, repo_dir, commit, n=None, lang="java"):
         self.repo_dir = repo_dir
         self.repo_name = f"{repo_dir.parent.name}/{repo_dir.name}"
         self.commit = commit
         self.n = n
+        self.lang = lang
+        gg.set_language(lang)
 
         # Checkout the commit for the repo
         g = Git(str(self.repo_dir))

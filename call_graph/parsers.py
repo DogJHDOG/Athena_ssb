@@ -216,3 +216,170 @@ class JavaParser(CallParser):
 
 class PythonParser(CallParser):
     pass
+
+
+class KotlinParser(CallParser):
+    language = 'kotlin'
+    extension = '.kt'
+
+    def __init__(self):
+        # Lazy grammar load so importing this module doesn't require kotlin in the .so.
+        self.language_library = Language('call_graph/my-languages.so', 'kotlin')
+        self.PARSER = Parser()
+        self.PARSER.set_language(self.language_library)
+        self.method_import_q = self.language_library.query("""
+                (function_declaration) @method
+                (secondary_constructor) @method
+                (anonymous_initializer) @method
+                (import_header) @import
+                """)
+        self.docstring_method_import_q = self.language_library.query("""
+                (function_declaration) @method
+                (secondary_constructor) @method
+                (anonymous_initializer) @method
+                (multiline_comment) @docstring
+                (line_comment) @docstring
+                (import_header) @import
+                """)
+        self.call_q = self.language_library.query("""
+                (call_expression) @call
+                """)
+        self.method_in_q = self.language_library.query("""
+                (property_declaration) @lv
+                (parameter) @param
+                (call_expression) @new
+                """)
+        self.field_q = self.language_library.query("""
+                (property_declaration) @field
+                """)
+
+    def get_import_file(self, imp):
+        # import_header may contain identifier nodes and an optional 'as' alias
+        # Use the first identifier-like child sequence joined by dots.
+        parts = []
+        for child in imp.children:
+            if child.type == 'identifier':
+                parts.append(self.node_to_string(child))
+            elif child.type == 'import_alias':
+                break
+        if parts:
+            dotted = '.'.join(parts)
+        else:
+            dotted = self.node_to_string(imp).strip()
+            if dotted.startswith('import'):
+                dotted = dotted[len('import'):].strip()
+            dotted = dotted.split(' as ')[0].strip().rstrip(';')
+        return dotted.replace('.', os.sep) + self.extension
+
+    def _enclosing_function(self, node):
+        cur = node.parent
+        while cur is not None:
+            if cur.type == 'function_declaration':
+                return cur
+            cur = cur.parent
+        return None
+
+    def _enclosing_class_name(self, node):
+        cur = node.parent
+        while cur is not None:
+            if cur.type in ('class_declaration', 'object_declaration'):
+                for c in cur.children:
+                    if c.type in ('type_identifier', 'simple_identifier'):
+                        return self.node_to_string(c)
+                break
+            cur = cur.parent
+        return None
+
+    def _resolve_local_type(self, node, object_name):
+        scope = self._enclosing_function(node)
+        if scope is None:
+            return None
+        for capture in self.method_in_q.captures(scope):
+            item, tag = capture[0], capture[1]
+            if item.start_point[0] >= node.start_point[0]:
+                continue
+            if tag == 'param':
+                p_name = None
+                p_type = None
+                for c in item.children:
+                    if c.type == 'simple_identifier' and p_name is None:
+                        p_name = self.node_to_string(c)
+                    elif c.type in ('user_type', 'type_reference', 'nullable_type'):
+                        p_type = self.node_to_string(c)
+                if p_name == object_name and p_type:
+                    return p_type.split('<')[0].split('?')[0].split('.')[-1]
+            elif tag == 'lv':
+                # property_declaration: 'val'|'var' variable_declaration (':' type)? ('=' expr)?
+                p_name = None
+                p_type = None
+                seen_colon = False
+                for c in item.children:
+                    if c.type == 'variable_declaration' and p_name is None:
+                        for cc in c.children:
+                            if cc.type == 'simple_identifier' and p_name is None:
+                                p_name = self.node_to_string(cc)
+                            elif cc.type in ('user_type', 'type_reference', 'nullable_type'):
+                                p_type = self.node_to_string(cc)
+                    elif c.type == ':':
+                        seen_colon = True
+                    elif seen_colon and c.type in ('user_type', 'type_reference', 'nullable_type'):
+                        p_type = self.node_to_string(c)
+                        seen_colon = False
+                if p_name == object_name and p_type:
+                    return p_type.split('<')[0].split('?')[0].split('.')[-1]
+        return None
+
+    def get_call_print(self, node):
+        class_name = None
+        method_name = None
+        nargs = 0
+        try:
+            if not node.children:
+                return (None, None, 0)
+            callable_node = node.children[0]
+            suffix_node = None
+            for c in node.children[1:]:
+                if c.type == 'call_suffix':
+                    suffix_node = c
+                    break
+            if callable_node.type == 'simple_identifier':
+                method_name = self.node_to_string(callable_node)
+                class_name = self._enclosing_class_name(node)
+            elif callable_node.type == 'navigation_expression':
+                receiver = None
+                for c in callable_node.children:
+                    if c.type == 'navigation_suffix':
+                        for cc in c.children:
+                            if cc.type == 'simple_identifier' and method_name is None:
+                                method_name = self.node_to_string(cc)
+                    elif receiver is None:
+                        receiver = c
+                if receiver is not None:
+                    if receiver.type == 'simple_identifier':
+                        receiver_text = self.node_to_string(receiver)
+                        if receiver_text and receiver_text[0].isupper():
+                            class_name = receiver_text
+                        else:
+                            class_name = self._resolve_local_type(node, receiver_text)
+                    elif receiver.type == 'call_expression':
+                        # chained: foo().bar() — receiver type unknown without full analysis
+                        class_name = None
+            if suffix_node is not None:
+                for c in suffix_node.children:
+                    if c.type == 'value_arguments':
+                        nargs = sum(1 for cc in c.children if cc.type == 'value_argument')
+                        break
+        except Exception:
+            pass
+        return (class_name, method_name, nargs)
+
+    def get_method_print(self, method):
+        name = None
+        nparams = 0
+        for child in method.children:
+            if child.type == 'simple_identifier' and name is None:
+                name = self.node_to_string(child)
+            elif child.type == 'function_value_parameters':
+                nparams = sum(1 for c in child.children if c.type == 'parameter')
+                break
+        return (name, nparams)

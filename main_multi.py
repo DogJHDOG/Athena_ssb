@@ -212,7 +212,7 @@ def main():
     parser.add_argument("--finetuned_model_path", default='./athena_reproduction_package/finetuned_models/graphcodebert.bin', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
     parser.add_argument("--lang", default='java', type=str,
-                        help="The programming language for parsing")
+                        help="The programming language for parsing (java or kotlin)")
     parser.add_argument('--output_dir', default='./athena_reproduction_package/results/graphcodebert', help='Path where to save results.')
     parser.add_argument("--weight", default=0.5, type=float,
                         help="The weight used to balance the method and its neighbor method information")
@@ -243,23 +243,23 @@ def main():
     # else:
     #     embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path)    
     if args.pretrained_model_name == 'microsoft/codebert-base':
-        embed = extractor.EmbedCodebert(args.pretrained_model_name, args.finetuned_model_path)
+        embed = extractor.EmbedCodebert(args.pretrained_model_name, args.finetuned_model_path, lang=args.lang)
 
     elif args.pretrained_model_name == 'microsoft/graphcodebert-base':
-        embed = extractor.EmbedGraphcodebert(args.pretrained_model_name, args.finetuned_model_path)
+        embed = extractor.EmbedGraphcodebert(args.pretrained_model_name, args.finetuned_model_path, lang=args.lang)
 
     elif 'qwen' in args.pretrained_model_name.lower():
-        embed = extractor.EmbedQwen(args.pretrained_model_name, args.finetuned_model_path)
+        embed = extractor.EmbedQwen(args.pretrained_model_name, args.finetuned_model_path, lang=args.lang)
 
     else:
-        embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path)
+        embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path, lang=args.lang)
     embed.load_finetuned_model() 
 
     cg_repos = []
     for repo in tqdm(dataset):
         for parent_commit in tqdm(dataset[repo]):                               
             repo_path = Path(args.project_path) / repo
-            repo_cg = SoftwareRepo(repo_path, parent_commit)
+            repo_cg = SoftwareRepo(repo_path, parent_commit, lang=args.lang)
             corpus_vecs = embed.extract_corpus_vecs(repo_cg.method_df.method.values)
             cg_repos.append((repo, parent_commit, dataset[repo][parent_commit], repo_cg, corpus_vecs, args))
 

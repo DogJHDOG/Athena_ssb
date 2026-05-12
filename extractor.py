@@ -5,12 +5,14 @@ import re
 
 from abc import ABC, abstractmethod
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, TensorDataset
-from parser import DFG_java
+from parser import DFG_java, DFG_kotlin
 from parser import (remove_comments_and_docstrings,
                    get_comments,
                    tree_to_token_index,
                    index_to_code_token,
                    tree_to_variable_index)
+
+_DFG_BY_LANG = {'java': DFG_java, 'kotlin': DFG_kotlin}
 from tree_sitter import Language, Parser
 # from transformers import (RobertaConfig, RobertaModel, RobertaTokenizer)
 from transformers import (
@@ -79,13 +81,14 @@ class TextDataset(Dataset):
 
 
 class Embed(ABC):
-    def __init__(self, model_name, finetuned_model_path):
+    def __init__(self, model_name, finetuned_model_path, lang='java'):
         super().__init__()
-        LANGUAGE = Language('parser/my-languages.so', 'java')     
+        self.lang = lang
+        LANGUAGE = Language('parser/my-languages.so', lang)
         parser = Parser()
-        parser.set_language(LANGUAGE) 
-        self.parser = [parser,DFG_java]
-        
+        parser.set_language(LANGUAGE)
+        self.parser = [parser, _DFG_BY_LANG[lang]]
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.config = RobertaConfig.from_pretrained(model_name)
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
@@ -155,7 +158,7 @@ class EmbedCodebert(Embed):
         self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
 
     def preprocess(self, code):
-        code=remove_comments_and_docstrings(code,'java')  
+        code=remove_comments_and_docstrings(code,self.lang)  
         tree = self.parser[0].parse(bytes(code,'utf8'))    
         root_node = tree.root_node  
         tokens_index=tree_to_token_index(root_node)     
@@ -214,7 +217,7 @@ class EmbedUnixcoder(Embed):
         model_to_load.load_state_dict(torch.load(self.finetuned_model_path))
 
     def preprocess(self, code):
-        code=remove_comments_and_docstrings(code,'java')  
+        code=remove_comments_and_docstrings(code,self.lang)  
         tree = self.parser[0].parse(bytes(code,'utf8'))    
         root_node = tree.root_node  
         tokens_index=tree_to_token_index(root_node)     
@@ -256,13 +259,14 @@ class EmbedUnixcoder(Embed):
 
 class EmbedQwen(Embed):
 
-    def __init__(self, model_name, finetuned_model_path=None):
+    def __init__(self, model_name, finetuned_model_path=None, lang='java'):
         super(Embed, self).__init__()
 
-        LANGUAGE = Language('parser/my-languages.so', 'java')     
+        self.lang = lang
+        LANGUAGE = Language('parser/my-languages.so', lang)
         parser = Parser()
-        parser.set_language(LANGUAGE) 
-        self.parser = [parser, DFG_java]
+        parser.set_language(LANGUAGE)
+        self.parser = [parser, _DFG_BY_LANG[lang]]
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -303,7 +307,7 @@ class EmbedQwen(Embed):
             )
 
     def preprocess(self, code):
-        code = remove_comments_and_docstrings(code, 'java')  
+        code = remove_comments_and_docstrings(code, self.lang)
         tree = self.parser[0].parse(bytes(code, 'utf8'))    
         root_node = tree.root_node  
         tokens_index = tree_to_token_index(root_node)     
@@ -369,7 +373,7 @@ class EmbedGraphcodebert(Embed):
  
     def preprocess(self, code):
         try:
-            code=remove_comments_and_docstrings(code,'java')   
+            code=remove_comments_and_docstrings(code,self.lang)   
             tree = self.parser[0].parse(bytes(code,'utf8'))    
             root_node = tree.root_node  
             tokens_index=tree_to_token_index(root_node)     
@@ -473,7 +477,7 @@ class EmbedGraphcodebert(Embed):
  
 #     def preprocess(self, code):
 #         try:
-#             code=remove_comments_and_docstrings(code,'java')   
+#             code=remove_comments_and_docstrings(code,self.lang)   
 #             tree = self.parser[0].parse(bytes(code,'utf8'))    
 #             root_node = tree.root_node  
 #             tokens_index=tree_to_token_index(root_node)     

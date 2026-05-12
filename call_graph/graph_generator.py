@@ -125,6 +125,7 @@ def add_edges():
     file_path = lang.filepath
     method_range = file_dict[file_path][1]
     imports = file_dict[file_path][0]
+    ext_len = len(lang.extension)
     for index in range(method_range[0], method_range[1]):
         node = method_dict['nodes'][index]
         calls = [call[0] for call in query.captures(node)]
@@ -134,7 +135,7 @@ def add_edges():
                 continue
             for file in imports:
                 # locate the target file containing the callee method
-                if file.split('/')[-1][:-5] == call_name[0]:
+                if file.split('/')[-1][:-ext_len] == call_name[0]:
                     rang = file_dict[file][1]
                     flag = 0
                     for jindex in range(rang[0], rang[1]):
@@ -158,7 +159,7 @@ def add_edges():
                                 break
                         if superclass:
                             for imp in file_dict[file][0]:
-                                if imp.split('/')[-1][:-5] == superclass:
+                                if imp.split('/')[-1][:-ext_len] == superclass:
                                     r = file_dict[imp][1]
                                     for j in range(r[0], r[1]):
                                         mtd_name = method_dict['prints'][j]
@@ -177,6 +178,8 @@ def set_language(language):
         lang = parsers.JavaParser()
     elif language == 'cpp':
         lang = parsers.CppParser()
+    elif language == 'kotlin':
+        lang = parsers.KotlinParser()
 
 
 def parse_directory(dir_path, include_docstring=False) -> DataFrame:
