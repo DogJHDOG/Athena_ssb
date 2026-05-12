@@ -109,7 +109,7 @@ def main():
     parser.add_argument("--finetuned_model_path", default='./athena_reproduction_package/finetuned_models/doc2vec.model', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
     parser.add_argument("--lang", default='java', type=str,
-                        help="The programming language for parsing")
+                        help="The programming language for parsing (java or kotlin)")
     parser.add_argument('--output_dir', default='./athena_reproduction_package/results/doc2vec', help='Path where to save results.')
     parser.add_argument("--weight", default=0.5, type=float,
                         help="The weight used to balance the method and its neighbor method information")
@@ -140,7 +140,7 @@ def main():
         for parent_commit in tqdm(dataset[repo]): 
             # build the call graph                                        
             repo_path = Path(args.project_path) / repo
-            repo_cg = data.SoftwareRepo(repo_path, parent_commit)
+            repo_cg = data.SoftwareRepo(repo_path, parent_commit, lang=args.lang)
             method_df = repo_cg.method_df
             
             # store indexes of query methods. Two-dimensional list to handle overloaded methods
