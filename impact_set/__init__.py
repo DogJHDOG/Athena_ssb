@@ -1,1 +1,1 @@
-from .builder import ImpactSetBuilder, ImpactEntry
+from .builder import ImpactSetBuilder
